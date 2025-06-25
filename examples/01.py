@@ -16,3 +16,30 @@ assert f(0) == 1
 # You can remove the handler
 handler.remove()
 assert f(0) == 100
+
+
+from dowhen import bp
+
+# bp() is another callback that brings up pdb
+handler = bp().when(f, "return x")
+# This will enter pdb
+f(0)
+# You can temporarily disable the handler
+# handler.enable() will enable it again
+handler.disable()
+
+
+from dowhen import goto
+
+# This will skip the line of `x += 100`
+# The handler will be removed after the with context
+with goto("return x").when(f, "x += 100"):
+    assert f(0) == 0
+
+
+from dowhen import when
+
+# You can chain callbacks and they'll run in order at the trigger
+# You don't need to store the handler if you don't use it
+when(f, "x += 100").goto("return x").do("x = 42")
+assert f(0) == 42
