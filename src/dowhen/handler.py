@@ -72,7 +72,7 @@ class EventHandler:
         Instrumenter().remove_handler(self)
         self.removed = True
 
-    def __call__(self, frame: FrameType) -> Any:
+    def __call__(self, frame: FrameType, **kwargs) -> Any:
         """
         处理器被调用时的执行逻辑
         
@@ -86,7 +86,7 @@ class EventHandler:
             elif should_fire:
                 # 依次执行所有回调
                 for cb in self.callbacks:
-                    if cb(frame) is DISABLE:
+                    if cb(frame, **kwargs) is DISABLE:
                         self.disable()
 
         if self.disabled:

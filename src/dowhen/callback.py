@@ -53,8 +53,8 @@ class Callback:
             raise TypeError(f"Unsupported callback type: {type(func)}. ")
         self.func = func
         self.kwargs = kwargs
-
-    def __call__(self, frame):
+        
+    def __call__(self, frame, **kwargs) -> Any:
         """执行回调函数"""
         ret = None
         if isinstance(self.func, str):
@@ -66,7 +66,7 @@ class Callback:
                 self._call_code(frame)
         elif inspect.isfunction(self.func) or inspect.ismethod(self.func):
             # 调用Python函数或方法
-            ret = self._call_function(frame)
+            ret = self._call_function(frame, **kwargs)
         else:  # pragma: no cover
             assert False, "Unknown callback type"
 
@@ -86,11 +86,11 @@ class Callback:
         # 在当前帧的上下文中执行代码
         exec(self.func, frame.f_globals, frame.f_locals)
 
-    def _call_function(self, frame: FrameType) -> Any:
+    def _call_function(self, frame: FrameType, **kwargs) -> Any:
         """调用Python函数或方法"""
         assert isinstance(self.func, (FunctionType, MethodType))
         # 在当前帧的上下文中调用函数
-        writeback = call_in_frame(self.func, frame)
+        writeback = call_in_frame(self.func, frame, **kwargs)
 
         f_locals = frame.f_locals
         if isinstance(writeback, dict):
@@ -144,7 +144,12 @@ class Callback:
 
             p = pdb.Pdb()
             p.set_trace(_frame)
-            with p.set_enterframe(_frame):
+            if hasattr(p, "set_enterframe"):
+                # set_enterframe is backported to 3.12 so the early versions
+                # of Python 3.12 will not have this method
+                with p.set_enterframe(_frame):
+                    p.user_line(_frame)
+            else:
                 p.user_line(_frame)
 
         return cls(do_breakpoint)
