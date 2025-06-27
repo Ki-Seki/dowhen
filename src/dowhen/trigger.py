@@ -1,5 +1,5 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE.txt
+# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE
 
 """
 触发器模块 - 定义何时执行回调函数
@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import inspect
+import sys
 from collections.abc import Callable
 from types import CodeType, FrameType, FunctionType, MethodType, ModuleType
 from typing import TYPE_CHECKING, Any, Literal
@@ -23,6 +24,9 @@ if TYPE_CHECKING:  # pragma: no cover
     from .handler import EventHandler
 
 
+DISABLE = sys.monitoring.DISABLE
+
+
 class _Event:
     """
     事件类 - 表示一个具体的监控事件
@@ -31,7 +35,7 @@ class _Event:
     """
     def __init__(
         self,
-        code: CodeType,
+        code: CodeType | None,
         event_type: Literal["line", "start", "return"],
         event_data: dict | None,
     ):
@@ -53,14 +57,16 @@ class Trigger:
         self,
         events: list[_Event],
         condition: str | Callable[..., bool] | None = None,
+        is_global: bool = False,
     ):
-        self.events = events      # 事件列表
-        self.condition = condition  # 触发条件
+        self.events = events
+        self.condition = condition
+        self.is_global = is_global
 
     @classmethod
     def _get_code_from_entity(
-        cls, entity: CodeType | FunctionType | MethodType | ModuleType | type
-    ) -> tuple[list[CodeType], list[CodeType]]:
+        cls, entity: CodeType | FunctionType | MethodType | ModuleType | type | None
+    ) -> tuple[list[CodeType] | list[None], list[CodeType] | list[None]]:
         """
         从给定实体中获取代码对象
         
@@ -73,7 +79,9 @@ class Trigger:
 
         entity_list = []
 
-        # 如果是模块或类，获取其中的所有函数/方法
+        if entity is None:
+            return [None], [None]
+
         if inspect.ismodule(entity) or inspect.isclass(entity):
             for _, obj in inspect.getmembers_static(
                 entity, lambda o: isinstance(o, (FunctionType, MethodType, CodeType))
@@ -114,8 +122,8 @@ class Trigger:
     @classmethod
     def when(
         cls,
-        entity: CodeType | FunctionType | MethodType | ModuleType | type,
-        *identifiers: str | int | tuple | list,
+        entity: CodeType | FunctionType | MethodType | ModuleType | type | None,
+        *identifiers: str | int | tuple,
         condition: str | Callable[..., bool | Any] | None = None,
         source_hash: str | None = None,
     ):
@@ -148,7 +156,8 @@ class Trigger:
                 raise TypeError(
                     f"source_hash must be a string, got {type(source_hash)}"
                 )
-            # 验证源代码是否发生变化
+            if entity is None:
+                raise ValueError("source_hash cannot be used with a None entity.")
             if get_source_hash(entity) != source_hash:
                 raise ValueError(
                     "The source hash does not match the entity's source code."
@@ -163,27 +172,33 @@ class Trigger:
         if not identifiers:
             for code in direct_code_objects:
                 events.append(_Event(code, "line", {"line_number": None}))
-            return cls(events, condition=condition)
-
-        # 处理每个标识符
-        for identifier in identifiers:
-            if identifier == "<start>":
-                # 监控函数开始
-                for code in direct_code_objects:
-                    events.append(_Event(code, "start", None))
-            elif identifier == "<return>":
-                # 监控函数返回
-                for code in direct_code_objects:
-                    events.append(_Event(code, "return", None))
-
-            # 在所有代码对象中查找匹配的行号
-            for code in all_code_objects:
-                line_numbers = get_line_numbers(code, identifier)
-                if line_numbers is not None:
-                    for line_number in line_numbers:
-                        events.append(
-                            _Event(code, "line", {"line_number": line_number})
-                        )
+        else:
+            for identifier in identifiers:
+                if identifier == "<start>":
+                    for code in direct_code_objects:
+                        events.append(_Event(code, "start", None))
+                elif identifier == "<return>":
+                    for code in direct_code_objects:
+                        events.append(_Event(code, "return", None))
+                else:
+                    for code in all_code_objects:
+                        if code is None:
+                            events.append(
+                                _Event(
+                                    None,
+                                    "line",
+                                    {"line_number": None, "identifier": identifier},
+                                )
+                            )
+                        else:
+                            line_numbers = get_line_numbers(code, identifier)
+                            if line_numbers is not None:
+                                for line_number in line_numbers:
+                                    events.append(
+                                        _Event(
+                                            code, "line", {"line_number": line_number}
+                                        )
+                                    )
 
         # 确保至少有一个事件被创建
         if not events:
@@ -191,7 +206,7 @@ class Trigger:
                 "Could not set any event based on the entity and identifiers."
             )
 
-        return cls(events, condition=condition)
+        return cls(events, condition=condition, is_global=entity is None)
 
     def bp(self) -> "EventHandler":
         """为当前触发器添加断点回调"""
@@ -211,7 +226,18 @@ class Trigger:
 
         return self._submit_callback(Callback.goto(target))
 
-    def should_fire(self, frame: FrameType) -> bool:
+    def has_event(self, frame: FrameType) -> bool | Any:
+        if self.is_global and self.events[0].event_type == "line":
+            identifier = self.events[0].event_data.get("identifier")
+            assert isinstance(identifier, (str, int, tuple))
+            line_numbers = get_line_numbers(frame.f_code, identifier)
+            if line_numbers is None:
+                return False
+            elif frame.f_lineno not in line_numbers:
+                return False
+        return True
+
+    def should_fire(self, frame: FrameType) -> bool | Any:
         """
         判断是否应该触发回调
         

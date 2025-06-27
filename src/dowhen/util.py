@@ -1,5 +1,5 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE.txt
+# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE
 
 """
 工具函数模块 - 提供各种辅助功能
@@ -19,6 +19,7 @@ from types import CodeType, FrameType, FunctionType, MethodType, ModuleType
 from typing import Any
 
 
+@functools.lru_cache(maxsize=256)
 def get_line_numbers(
     code: CodeType, identifier: int | str | list | tuple
 ) -> list[int] | None:
@@ -46,11 +47,24 @@ def get_line_numbers(
             line_numbers_sets.append({ident})
         elif isinstance(ident, str):
             if ident.startswith("+") and ident[1:].isdigit():
-                # 相对行号，如"+5"表示从函数开始后第5行
-                line_numbers_sets.append({code.co_firstlineno + int(ident[1:])})
+                # We need to find the actual definition of the function/class
+                # when it is decorated
+                try:
+                    lines, start_line = inspect.getsourcelines(code)
+                    for idx, line in enumerate(lines):
+                        # Skip all the decorators
+                        if not line.strip().startswith("@"):
+                            break
+                    firstlineno = start_line + idx
+                except OSError:
+                    # That's our best guess
+                    firstlineno = code.co_firstlineno
+                line_numbers_sets.append({firstlineno + int(ident[1:])})
             else:
-                # 代码片段匹配
-                lines, start_line = inspect.getsourcelines(code)
+                try:
+                    lines, start_line = inspect.getsourcelines(code)
+                except OSError:
+                    return None
                 line_numbers = set()
                 for i, line in enumerate(lines):
                     if line.strip().startswith(ident):

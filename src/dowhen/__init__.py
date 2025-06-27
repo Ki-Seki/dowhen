@@ -1,8 +1,8 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE.txt
+# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE
 
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 from .callback import bp, do, goto
 from .instrumenter import DISABLE, clear_all

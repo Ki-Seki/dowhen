@@ -1,5 +1,5 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE.txt
+# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE
 
 """
 回调模块 - 定义各种类型的回调函数
@@ -156,8 +156,8 @@ class Callback:
 
     def when(
         self,
-        entity: CodeType | FunctionType | MethodType | ModuleType | type,
-        *identifiers: str | int | tuple | list,
+        entity: CodeType | FunctionType | MethodType | ModuleType | type | None,
+        *identifiers: str | int | tuple,
         condition: str | Callable[..., bool | Any] | None = None,
         source_hash: str | None = None,
     ) -> "EventHandler":

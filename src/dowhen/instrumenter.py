@@ -1,5 +1,5 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE.txt
+# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE
 
 """
 插桩器模块 - 核心的代码监控和事件分发系统
@@ -56,7 +56,7 @@ class Instrumenter:
             self.tool_id = tool_id
             # 按代码对象组织的处理器映射
             # 结构：{CodeType: {"line": {line_number: [handlers]}, "start": [handlers], "return": [handlers]}}
-            self.handlers: defaultdict[CodeType, dict] = defaultdict(dict)
+            self.handlers: defaultdict[CodeType | None, dict] = defaultdict(dict)
 
             # 向sys.monitoring注册监控工具
             sys.monitoring.use_tool_id(self.tool_id, "dowhen instrumenter")
@@ -74,8 +74,10 @@ class Instrumenter:
     def clear_all(self) -> None:
         """清除所有监控和处理器"""
         for code in self.handlers:
-            # 停止对每个代码对象的监控
-            sys.monitoring.set_local_events(self.tool_id, code, E.NO_EVENTS)
+            if code is None:
+                sys.monitoring.set_events(self.tool_id, E.NO_EVENTS)
+            else:
+                sys.monitoring.set_local_events(self.tool_id, code, E.NO_EVENTS)
         self.handlers.clear()
 
     def submit(self, event_handler: "EventHandler") -> None:
@@ -106,7 +108,7 @@ class Instrumenter:
                 self.register_return_event(code, event_handler)
 
     def register_line_event(
-        self, code: CodeType, line_number: int, event_handler: "EventHandler"
+        self, code: CodeType | None, line_number: int, event_handler: "EventHandler"
     ) -> None:
         """注册行号事件监控"""
         # 将处理器添加到指定代码对象的指定行号
@@ -114,57 +116,72 @@ class Instrumenter:
             event_handler
         )
 
-        # 启用该代码对象的行号监控
-        events = sys.monitoring.get_local_events(self.tool_id, code)
-        sys.monitoring.set_local_events(self.tool_id, code, events | E.LINE)
+        if code is None:
+            events = sys.monitoring.get_events(self.tool_id)
+            sys.monitoring.set_events(self.tool_id, events | E.LINE)
+        else:
+            events = sys.monitoring.get_local_events(self.tool_id, code)
+            sys.monitoring.set_local_events(self.tool_id, code, events | E.LINE)
         sys.monitoring.restart_events()
 
     def line_callback(self, code: CodeType, line_number: int):  # pragma: no cover
-        """行号事件回调函数"""
+        handlers = []
+        if None in self.handlers:
+            handlers.extend(self.handlers[None].get("line", {}).get(line_number, []))
+            handlers.extend(self.handlers[None].get("line", {}).get(None, []))
         if code in self.handlers:
-            # 获取指定行号的处理器 + 通用行号处理器（None表示所有行）
-            handlers = self.handlers[code].get("line", {}).get(line_number, [])
+            handlers.extend(self.handlers[code].get("line", {}).get(line_number, []))
             handlers.extend(self.handlers[code].get("line", {}).get(None, []))
-            if handlers:
-                return self._process_handlers(handlers, sys._getframe(1))
+        if handlers:
+            return self._process_handlers(handlers, sys._getframe(1))
         return sys.monitoring.DISABLE
 
     def register_start_event(
-        self, code: CodeType, event_handler: "EventHandler"
+        self, code: CodeType | None, event_handler: "EventHandler"
     ) -> None:
         """注册函数开始事件监控"""
         self.handlers[code].setdefault("start", []).append(event_handler)
 
-        # 启用该代码对象的函数开始监控
-        events = sys.monitoring.get_local_events(self.tool_id, code)
-        sys.monitoring.set_local_events(self.tool_id, code, events | E.PY_START)
+        if code is None:
+            events = sys.monitoring.get_events(self.tool_id)
+            sys.monitoring.set_events(self.tool_id, events | E.PY_START)
+        else:
+            events = sys.monitoring.get_local_events(self.tool_id, code)
+            sys.monitoring.set_local_events(self.tool_id, code, events | E.PY_START)
         sys.monitoring.restart_events()
 
     def start_callback(self, code: CodeType, offset):  # pragma: no cover
-        """函数开始事件回调函数"""
+        handlers = []
+        if None in self.handlers:
+            handlers.extend(self.handlers[None].get("start", []))
         if code in self.handlers:
-            handlers = self.handlers[code].get("start", [])
-            if handlers:
-                return self._process_handlers(handlers, sys._getframe(1))
+            handlers.extend(self.handlers[code].get("start", []))
+        if handlers:
+            return self._process_handlers(handlers, sys._getframe(1))
         return sys.monitoring.DISABLE
 
     def register_return_event(
-        self, code: CodeType, event_handler: "EventHandler"
+        self, code: CodeType | None, event_handler: "EventHandler"
     ) -> None:
         """注册函数返回事件监控"""
         self.handlers[code].setdefault("return", []).append(event_handler)
 
-        # 启用该代码对象的函数返回监控
-        events = sys.monitoring.get_local_events(self.tool_id, code)
-        sys.monitoring.set_local_events(self.tool_id, code, events | E.PY_RETURN)
+        if code is None:
+            events = sys.monitoring.get_events(self.tool_id)
+            sys.monitoring.set_events(self.tool_id, events | E.PY_RETURN)
+        else:
+            events = sys.monitoring.get_local_events(self.tool_id, code)
+            sys.monitoring.set_local_events(self.tool_id, code, events | E.PY_RETURN)
         sys.monitoring.restart_events()
 
     def return_callback(self, code: CodeType, offset, retval):  # pragma: no cover
-        """函数返回事件回调函数"""
+        handlers = []
+        if None in self.handlers:
+            handlers.extend(self.handlers[None].get("return", []))
         if code in self.handlers:
-            handlers = self.handlers[code].get("return", [])
-            if handlers:
-                return self._process_handlers(handlers, sys._getframe(1), retval=retval)
+            handlers.extend(self.handlers[code].get("return", []))
+        if handlers:
+            return self._process_handlers(handlers, sys._getframe(1), retval=retval)
         return sys.monitoring.DISABLE
 
     def _process_handlers(
@@ -220,18 +237,20 @@ class Instrumenter:
                 # 如果该事件类型没有处理器了，停止该类型的监控
                 if not self.handlers[code][event.event_type]:
                     del self.handlers[code][event.event_type]
-                    events = sys.monitoring.get_local_events(self.tool_id, code)
-                    # 根据事件类型确定要移除的监控标志
                     removed_event = {
                         "line": E.LINE,
                         "start": E.PY_START,
                         "return": E.PY_RETURN,
                     }[event.event_type]
 
-                    # 从监控中移除该事件类型
-                    sys.monitoring.set_local_events(
-                        self.tool_id, code, events & ~removed_event
-                    )
+                    if code is None:
+                        events = sys.monitoring.get_events(self.tool_id)
+                        sys.monitoring.set_events(self.tool_id, events & ~removed_event)
+                    else:
+                        events = sys.monitoring.get_local_events(self.tool_id, code)
+                        sys.monitoring.set_local_events(
+                            self.tool_id, code, events & ~removed_event
+                        )
 
 
 def clear_all() -> None:

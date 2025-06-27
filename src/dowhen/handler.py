@@ -1,5 +1,5 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE.txt
+# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE
 
 """
 事件处理器模块 - 管理触发器和回调的生命周期
@@ -79,6 +79,8 @@ class EventHandler:
         检查触发条件，如果满足则依次执行所有回调
         """
         if not self.disabled:
+            if not self.trigger.has_event(frame):
+                return DISABLE
             should_fire = self.trigger.should_fire(frame)
             if should_fire is DISABLE:
                 # 触发条件返回DISABLE，禁用处理器

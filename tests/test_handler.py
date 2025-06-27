@@ -1,5 +1,5 @@
 # Licensed under the Apache License: http://www.apache.org/licenses/LICENSE-2.0
-# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE.txt
+# For details: https://github.com/gaogaotiantian/dowhen/blob/master/NOTICE
 
 
 import sys
@@ -44,6 +44,12 @@ def test_handler_call():
     handler.disable()
     handler(frame)
     assert x == 0
+
+    with dowhen.do("pass").when(None, "assert") as handler:
+        assert handler(frame) is None
+
+    with dowhen.do("pass").when(None, "pass") as handler:
+        assert handler(frame) is dowhen.DISABLE
 
 
 def test_handler_disable():
