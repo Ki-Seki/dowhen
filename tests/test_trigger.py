@@ -3,6 +3,7 @@
 
 
 import functools
+import inspect
 import re
 import sys
 
@@ -190,6 +191,19 @@ def test_code_without_source():
     events = []
     with dowhen.when(code, "+1").do(lambda: events.append(0)):
         exec(code)
+        assert events == [0]
+
+
+def test_mirror():
+    def code():
+        def f(x):
+            return x
+
+        f(0)
+
+    events = []
+    with dowhen.when(code, "+1").do(lambda: events.append(0)):
+        code()
         assert events == [0]
 
 
@@ -381,3 +395,96 @@ def test_invalid_line_number():
     code = compile("pass", "<string>", "exec")
     with pytest.raises(ValueError):
         dowhen.when(code, "return")
+
+
+@pytest.mark.parametrize(
+    "identifier, trigger_line, consistent",
+    [
+        ('"""Doc str"""', +5, False),
+        ("# Simple comment", +5, False),
+        ('"A simple string"', +5, True),
+        ('"""A triple quoted string"""', +7, True),
+        ("a = ", +9, True),
+        ("b = ", +12, True),
+        ("code + comment with semicolon", +16, False),
+        ('"""  # triple quoted string ending', +16, False),
+        ("c = ", +16, True),
+        ('"""code + comment with backslash"""', +17, True),
+        ("d = ", +19, True),
+        ('"""String 1"""', +20, True),
+        ('"""String 2.1 """', +21, True),
+        ('"String 2.2"', +25, False),
+        ("]", +25, False),
+        ("def inner_func()", +25, True),
+        ("return True", +26, True),
+        ("# After-return comment", +28, False),
+        ("inner_func()", +28, True),
+        ("return a, b, c, d", +30, True),
+    ],
+)
+def test_comment_as_identifier(identifier, trigger_line, consistent, recwarn):
+    # fmt: off
+    def func():
+        """Doc str"""  #                            (inexecutable)
+
+        # Simple comment                            (inexecutable)
+
+        "A simple string"  #                        (executable)
+
+        """A triple quoted string"""  #             (executable)
+
+        a = 1  # code + comment                     (executable)
+
+        b = 2; """                                  (executable)
+        code + comment with semicolon               (inexecutable)
+        """  # triple quoted string ending          (inexecutable)
+
+        #                                           (next line is executable)
+        c = \
+            """code + comment with backslash"""  #  (executable)
+
+        d = [  #                                    (executable)
+            """String 1""",  #                      (executable)
+            """String 2.1 """  #                    (executable)
+            "String 2.2",  #                        (inexecutable)
+        ]  #                                        (inexecutable)
+
+        def inner_func():  #                        (executable)   
+            return True  #                          (executable)
+            # After-return comment                  (inexecutable)
+        inner_func()  #                             (executable)
+
+        return a, b, c, d  #                        (executable)
+    # fmt: on
+
+    base_line_number = inspect.getsourcelines(func)[1]
+    abs_trigger_line = base_line_number + trigger_line
+
+    trigger = dowhen.when(func, identifier)
+    assert len(trigger.events) == 1
+    assert trigger.events[0].event_type == "line"
+    assert trigger.events[0].event_data["line_number"] == abs_trigger_line
+
+    if consistent:
+        assert len(recwarn) == 0
+    else:
+        assert len(recwarn) == 1
+        assert f"falling back to next executable line {abs_trigger_line}." in str(
+            recwarn[0].message
+        )
+
+
+def test_final_comment_as_identifier():
+    def func():
+        return 42
+        # Final comment without next executable line
+
+    trigger = dowhen.when(func, "# Final comment without next executable line")
+    assert trigger.events[0].event_type == "line"
+    assert (
+        trigger.events[0].event_data["line_number"] == func.__code__.co_firstlineno + 1
+    )
+    assert len(trigger.events) == 1
+
+    with pytest.raises(ValueError):
+        dowhen.when(func, "nonexistent")  # Should raise ValueError for nonexistent line
