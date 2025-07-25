@@ -5,4 +5,4 @@
 import re
 from typing import Literal
 
-IdentifierType = int | str | re.Pattern | Literal["<start>", "<return>"] | None
+IdentifierType = int | str | re.Pattern | Literal["<start>", "<return>"]

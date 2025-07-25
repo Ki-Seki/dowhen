@@ -38,7 +38,8 @@ Line
 """"
 
 To locate a line, you can use the absolute line number, a string starting with ``+`` as
-the relative line number, the prefix of the line or a regex pattern.
+the relative line number, the prefix of the line, a regex pattern or pass no identifier
+to trigger on all lines.
 
 Notice that the indentation of the line is stripped before matching.
 
@@ -67,6 +68,18 @@ If an identifier matches multiple lines, the callback will trigger on all of the
 
    do("x += 1").when(f, "x +=")  # triggers on both lines
    assert f(0) == 2
+
+If you want to trigger on all lines, do not specify any identifier:
+
+.. code-block:: python
+
+    def func():
+        pass
+        pass
+        pass
+
+    dowhen.when(func).do('print("Hi")')  # triggers on all lines in func
+    func()
 
 Special Events
 """"""""""""""
