@@ -10,6 +10,7 @@ import re
 from collections.abc import Callable
 from types import CodeType, FrameType, FunctionType, MethodType, ModuleType
 from typing import Any
+from warnings import warn
 
 from .types import IdentifierType
 
@@ -83,9 +84,33 @@ def get_line_numbers(
 
     agreed_line_numbers = set.intersection(*line_numbers_sets)
     for sub_code in get_all_code_objects(code):
-        for line_number in agreed_line_numbers:
-            if line_number in (line[2] for line in sub_code.co_lines()):
-                line_numbers_ret.setdefault(sub_code, []).append(line_number)
+        co_lines = {line[2] for line in sub_code.co_lines() if line[2] is not None}
+        executable_lines = agreed_line_numbers & co_lines
+        inexecutable_lines = agreed_line_numbers - executable_lines
+
+        fallback_lines = set()
+        for line_number in inexecutable_lines:
+            next_executable_line = min(
+                (line for line in sorted(co_lines) if line > line_number),
+                default=None,
+            )
+            if next_executable_line is not None:
+                warn(
+                    f"Line {line_number} is not executable in {sub_code.co_name}, "
+                    f"falling back to next executable line {next_executable_line}.",
+                    stacklevel=3,
+                )
+                fallback_lines.add(next_executable_line)
+            else:
+                warn(
+                    f"Line {line_number} is not executable in {sub_code.co_name}, "
+                    "and no next executable line found. Skipping this line.",
+                    stacklevel=3,
+                )
+
+        line_numbers_ret.setdefault(sub_code, []).extend(
+            executable_lines | fallback_lines
+        )
 
     for line_numbers in line_numbers_ret.values():
         line_numbers.sort()
