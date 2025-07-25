@@ -14,18 +14,24 @@ from typing import Any
 from .types import IdentifierType
 
 
-def getrealsourcelines(obj) -> tuple[list[str], int]:
+def getrealsourcelines(
+    obj: CodeType | FunctionType | MethodType | ModuleType | type,
+) -> tuple[list[str], int]:
     try:
         lines, start_line = inspect.getsourcelines(obj)
-        # We need to find the actual definition of the function/class
-        # when it is decorated
-        while lines[0].strip().startswith("@"):
-            # If the first line is a decorator, we need to skip it
-            # and move to the next line
-            lines.pop(0)
-            start_line += 1
+
+        # If the first line is a decorator, find the next line
+        # that starts with "def ", "async def ", or "class ".
+        if lines and lines[0].strip().startswith("@"):
+            for idx, line in enumerate(lines):
+                stripped = line.lstrip()
+                if stripped.startswith(("def ", "async def ", "class ")):
+                    lines = lines[idx:]
+                    start_line += idx
+                    break
+
     except OSError:
-        lines, start_line = [], obj.co_firstlineno
+        lines, start_line = [], getattr(obj, "co_firstlineno", 0)
 
     return lines, start_line
 

@@ -147,14 +147,25 @@ def test_class():
 
 
 def test_decorator():
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(x):
-            return func(x)
+    def decorator(*args, **kwargs):
+        def actual_decorator(func):
+            @functools.wraps(func)
+            def wrapper(*args, **kwargs):
+                print(f"[decorator] dargs={args}, dkwargs={kwargs}")
+                return func(*args, **kwargs)
 
-        return wrapper
+            return wrapper
 
-    @decorator
+        if args and callable(args[0]) and not kwargs:
+            return actual_decorator(args[0])
+
+        return actual_decorator
+
+    @decorator(
+        parameter1="value1",
+        parameter2="value2",
+        parameter3="value3",
+    )
     def f(x):
         x += 1
         return x
