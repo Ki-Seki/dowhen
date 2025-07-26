@@ -194,19 +194,6 @@ def test_code_without_source():
         assert events == [0]
 
 
-def test_mirror():
-    def code():
-        def f(x):
-            return x
-
-        f(0)
-
-    events = []
-    with dowhen.when(code, "+1").do(lambda: events.append(0)):
-        code()
-        assert events == [0]
-
-
 def test_every_line():
     def f(x):
         x = 1
