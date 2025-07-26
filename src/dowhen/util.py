@@ -10,7 +10,6 @@ import re
 from collections.abc import Callable
 from types import CodeType, FrameType, FunctionType, MethodType, ModuleType
 from typing import Any
-from warnings import warn
 
 from .types import IdentifierType
 
@@ -83,34 +82,44 @@ def get_line_numbers(
         line_numbers_sets.append(line_numbers_set)
 
     agreed_line_numbers = set.intersection(*line_numbers_sets)
+    
+    all_co_lines = set()
     for sub_code in get_all_code_objects(code):
-        co_lines = {line[2] for line in sub_code.co_lines() if line[2] is not None}
-        executable_lines = agreed_line_numbers & co_lines
-        inexecutable_lines = agreed_line_numbers - executable_lines
+        co_lines = set(line[2] for line in sub_code.co_lines() if line[2] is not None)
+        all_co_lines.update(co_lines)
+        for line_number in agreed_line_numbers:
+            if line_number in co_lines:
+                line_numbers_ret.setdefault(sub_code, []).append(line_number)
 
-        fallback_lines = set()
-        for line_number in inexecutable_lines:
-            next_executable_line = min(
-                (line for line in sorted(co_lines) if line > line_number),
-                default=None,
-            )
-            if next_executable_line is not None:
-                warn(
-                    f"Line {line_number} is not executable in {sub_code.co_name}, "
-                    f"falling back to next executable line {next_executable_line}.",
-                    stacklevel=3,
-                )
-                fallback_lines.add(next_executable_line)
-            else:
-                warn(
-                    f"Line {line_number} is not executable in {sub_code.co_name}, "
-                    "and no next executable line found. Skipping this line.",
-                    stacklevel=3,
-                )
+    agreed_and_in_scope_line_numbers = set(filter(lambda x: min(all_co_lines) <= x <= max(all_co_lines), agreed_line_numbers))
+    inexecutable_line_numbers = sorted(agreed_and_in_scope_line_numbers - all_co_lines)
 
-        line_numbers_ret.setdefault(sub_code, []).extend(
-            executable_lines | fallback_lines
+    fallback_line_numbers: set[int] = set()
+    for inexec_line in inexecutable_line_numbers:
+        next_exec_line = min(
+            (line for line in all_co_lines if line > inexec_line), default=None
         )
+        if next_exec_line is not None:
+            fallback_line_numbers.add(next_exec_line)
+        else:
+            import warnings
+            warnings.warn(
+                f"Line {inexec_line} in code object {code} is not executable and has no next executable line.",
+                stacklevel=3
+            )
+
+    # Add fallback lines to the line_numbers_ret
+    for sub_code in get_all_code_objects(code):
+        co_lines = set(line[2] for line in sub_code.co_lines() if line[2] is not None)
+        for fallback_line in fallback_line_numbers:
+            if fallback_line in co_lines:
+                import warnings
+                warnings.warn(
+                    f"One or more lines in code object {code} are not executable, "
+                    f"falling back to next executable line {fallback_line}.",
+                    stacklevel=3
+                )
+                line_numbers_ret.setdefault(sub_code, []).append(fallback_line)
 
     for line_numbers in line_numbers_ret.values():
         line_numbers.sort()

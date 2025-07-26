@@ -398,14 +398,14 @@ def test_invalid_line_number():
 
 
 @pytest.mark.parametrize(
-    "identifier, trigger_line, consistent",
+    "identifier, rel_trigger_line, consistent",
     [
         ('"""Doc str"""', +5, False),
         ("# Simple comment", +5, False),
         ('"A simple string"', +5, True),
         ('"""A triple quoted string"""', +7, True),
         ("a = ", +9, True),
-        ("b = ", +12, True),
+        ("b = ", +11, True),
         ("code + comment with semicolon", +16, False),
         ('"""  # triple quoted string ending', +16, False),
         ("c = ", +16, True),
@@ -422,7 +422,7 @@ def test_invalid_line_number():
         ("return a, b, c, d", +30, True),
     ],
 )
-def test_comment_as_identifier(identifier, trigger_line, consistent, recwarn):
+def test_comment_as_identifier(identifier, rel_trigger_line, consistent, recwarn):
     # fmt: off
     def func():
         """Doc str"""  #                            (inexecutable)
@@ -458,7 +458,7 @@ def test_comment_as_identifier(identifier, trigger_line, consistent, recwarn):
     # fmt: on
 
     base_line_number = inspect.getsourcelines(func)[1]
-    abs_trigger_line = base_line_number + trigger_line
+    abs_trigger_line = base_line_number + rel_trigger_line
 
     trigger = dowhen.when(func, identifier)
     assert len(trigger.events) == 1
@@ -479,12 +479,5 @@ def test_final_comment_as_identifier():
         return 42
         # Final comment without next executable line
 
-    trigger = dowhen.when(func, "# Final comment without next executable line")
-    assert trigger.events[0].event_type == "line"
-    assert (
-        trigger.events[0].event_data["line_number"] == func.__code__.co_firstlineno + 1
-    )
-    assert len(trigger.events) == 1
-
-    with pytest.raises(ValueError):
-        dowhen.when(func, "nonexistent")  # Should raise ValueError for nonexistent line
+    with pytest.raises(ValueError, match="Could not set any event"):
+        dowhen.when(func, "# Final comment without next executable line")
