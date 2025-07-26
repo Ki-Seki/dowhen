@@ -7,6 +7,7 @@ from __future__ import annotations
 import functools
 import inspect
 import re
+import warnings
 from collections.abc import Callable
 from types import CodeType, FrameType, FunctionType, MethodType, ModuleType
 from typing import Any
@@ -82,7 +83,7 @@ def get_line_numbers(
         line_numbers_sets.append(line_numbers_set)
 
     agreed_line_numbers = set.intersection(*line_numbers_sets)
-    
+
     all_co_lines = set()
     for sub_code in get_all_code_objects(code):
         co_lines = set(line[2] for line in sub_code.co_lines() if line[2] is not None)
@@ -91,9 +92,16 @@ def get_line_numbers(
             if line_number in co_lines:
                 line_numbers_ret.setdefault(sub_code, []).append(line_number)
 
-    agreed_and_in_scope_line_numbers = set(filter(lambda x: min(all_co_lines) <= x <= max(all_co_lines), agreed_line_numbers))
-    inexecutable_line_numbers = sorted(agreed_and_in_scope_line_numbers - all_co_lines)
+    # Only keep line numbers that are within the range of the current `code` to
+    # exclude lines belonging to other code objects derived from Trigger._get_code_from_entity
+    agreed_and_in_scope_line_numbers = set(
+        filter(
+            lambda x: min(all_co_lines) <= x <= max(all_co_lines), agreed_line_numbers
+        )
+    )
 
+    # Find fallback lines for non-executable code lines
+    inexecutable_line_numbers = sorted(agreed_and_in_scope_line_numbers - all_co_lines)
     fallback_line_numbers: set[int] = set()
     for inexec_line in inexecutable_line_numbers:
         next_exec_line = min(
@@ -101,23 +109,15 @@ def get_line_numbers(
         )
         if next_exec_line is not None:
             fallback_line_numbers.add(next_exec_line)
-        else:
-            import warnings
-            warnings.warn(
-                f"Line {inexec_line} in code object {code} is not executable and has no next executable line.",
-                stacklevel=3
-            )
 
-    # Add fallback lines to the line_numbers_ret
+    # Add fallback lines to the result
     for sub_code in get_all_code_objects(code):
-        co_lines = set(line[2] for line in sub_code.co_lines() if line[2] is not None)
         for fallback_line in fallback_line_numbers:
-            if fallback_line in co_lines:
-                import warnings
+            if fallback_line in (line[2] for line in sub_code.co_lines()):
                 warnings.warn(
                     f"One or more lines in code object {code} are not executable, "
                     f"falling back to next executable line {fallback_line}.",
-                    stacklevel=3
+                    stacklevel=3,
                 )
                 line_numbers_ret.setdefault(sub_code, []).append(fallback_line)
 

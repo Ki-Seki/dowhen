@@ -160,7 +160,8 @@ class Trigger:
                 events.append(_Event(code, "line", {"line_number": None}))
         else:
             identifiers = cls.unify_identifiers(entity, *identifiers)
-            created_line_events = set()  # Track line numbers we've already created events for to avoid duplicates
+            # Track line numbers we've already created events for to avoid duplicates
+            created_line_events = set()
             for identifier in identifiers:
                 if identifier == "<start>":
                     for code in code_objects:
