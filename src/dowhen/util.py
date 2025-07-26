@@ -92,25 +92,16 @@ def get_line_numbers(
             if line_number in co_lines:
                 line_numbers_ret.setdefault(sub_code, []).append(line_number)
 
-    # Only keep line numbers that are within the range of the current `code` to
-    # exclude lines belonging to other code objects derived from Trigger._get_code_from_entity
-    agreed_and_in_scope_line_numbers = set(
-        filter(
-            lambda x: min(all_co_lines) <= x <= max(all_co_lines), agreed_line_numbers
-        )
-    )
-
     # Find fallback lines for non-executable code lines
-    inexecutable_line_numbers = sorted(agreed_and_in_scope_line_numbers - all_co_lines)
     fallback_line_numbers: set[int] = set()
-    for inexec_line in inexecutable_line_numbers:
+    for inexec_line in sorted(agreed_line_numbers - all_co_lines):
         next_exec_line = min(
             (line for line in all_co_lines if line > inexec_line), default=None
         )
         if next_exec_line is not None:
             fallback_line_numbers.add(next_exec_line)
 
-    # Add fallback lines to the result
+    # Add fallback lines to the line_numbers_ret
     for sub_code in get_all_code_objects(code):
         for fallback_line in fallback_line_numbers:
             if fallback_line in (line[2] for line in sub_code.co_lines()):
