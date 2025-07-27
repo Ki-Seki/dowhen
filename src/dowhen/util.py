@@ -15,23 +15,24 @@ from .types import IdentifierType
 
 
 def getrealsourcelines(
-    obj: CodeType | FunctionType | MethodType | ModuleType | type,
+    obj: CodeType | FunctionType | MethodType | type,
 ) -> tuple[list[str], int]:
     try:
         lines, start_line = inspect.getsourcelines(obj)
 
         # If the first line is a decorator, find the next line
         # that starts with "def ", "async def ", or "class ".
-        if lines and lines[0].strip().startswith("@"):
+        if lines[0].strip().startswith("@"):
             for idx, line in enumerate(lines):
-                stripped = line.lstrip()
-                if stripped.startswith(("def ", "async def ", "class ")):
-                    lines = lines[idx:]
-                    start_line += idx
+                if line.lstrip().startswith(("def ", "async def ", "class ")):
                     break
+            lines = lines[idx:]
+            start_line += idx
 
     except OSError:
-        lines, start_line = [], getattr(obj, "co_firstlineno", 0)
+        # mypy thinks obj does not have a co_firstlineno attribute, but it does.
+        # Because OSError occurs only when obj is a CodeType object.
+        lines, start_line = [], obj.co_firstlineno  # type: ignore[union-attr]
 
     return lines, start_line
 
